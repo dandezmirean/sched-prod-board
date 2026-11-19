@@ -5,6 +5,7 @@ const REFRESH_MS = 2000;
 
 const loader = document.querySelector('[data-testid="loader"]');
 const empty = document.querySelector('[data-testid="empty"]');
+empty.remove();
 const list = document.querySelector('[data-testid="incident-list"]');
 const viewerLocale = navigator.language;
 
@@ -52,8 +53,9 @@ function render(incidents) {
   const shown = new Map([...list.children].map((row) => [row.dataset.id, row]));
   const rows = incidents.map((incident) => shown.get(incident.id) ?? incidentRow(incident));
   list.replaceChildren(...rows);
-  loader.hidden = true;
-  empty.hidden = incidents.length > 0;
+  loader.remove();
+  if (incidents.length === 0) list.before(empty);
+  else empty.remove();
 }
 
 list.addEventListener('click', async (event) => {
