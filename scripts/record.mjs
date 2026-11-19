@@ -11,6 +11,8 @@ mkdirSync(outDir, { recursive: true });
 const browser = await chromium.launch();
 const context = await browser.newContext({
   viewport: { width: 1280, height: 720 },
+  locale: 'ro-RO',
+  timezoneId: 'Europe/Bucharest',
   recordVideo: { dir: outDir, size: { width: 1280, height: 720 } },
 });
 // A visible pointer for the recording only; the board itself has none of this.
