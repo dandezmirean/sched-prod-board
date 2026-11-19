@@ -7,7 +7,6 @@ const loader = document.querySelector('[data-testid="loader"]');
 const empty = document.querySelector('[data-testid="empty"]');
 const list = document.querySelector('[data-testid="incident-list"]');
 const viewerLocale = navigator.language;
-const acked = new Set();
 
 function span(className, text) {
   const el = document.createElement('span');
@@ -22,8 +21,7 @@ function ackedMark() {
   return mark;
 }
 
-function ackControl(id) {
-  if (acked.has(id)) return ackedMark();
+function ackButton() {
   const button = document.createElement('button');
   button.type = 'button';
   button.dataset.testid = 'ack';
@@ -44,7 +42,7 @@ function incidentRow(incident) {
     span('sev', incident.severity),
     span('what', `${incident.service} · ${incident.region} · ${incident.summary}`),
     time,
-    ackControl(incident.id),
+    ackButton(),
   );
   return row;
 }
@@ -65,7 +63,6 @@ list.addEventListener('click', async (event) => {
   button.disabled = true;
   try {
     await ack(row.dataset.id);
-    acked.add(row.dataset.id);
     button.replaceWith(ackedMark());
   } catch (error) {
     button.disabled = false;
