@@ -1,5 +1,5 @@
-// Records the board in use: open it, watch a new incident arrive, ack the top row, then ack a row while the
-// list moves.
+// Records the board in use: open it, watch a new incident arrive, ack the top incident in its panel, then
+// pick a row while the list moves and ack in the panel.
 // Usage: node scripts/record.mjs <board url> <out dir>
 import { chromium } from 'playwright';
 import { mkdirSync, writeFileSync, renameSync } from 'node:fs';
@@ -40,14 +40,20 @@ const note = (event) => {
 };
 const rows = page.getByTestId('incident-row');
 const topId = () => rows.first().getAttribute('data-id');
-const ackCenter = async (row) => {
-  const box = await row.getByTestId('ack').boundingBox();
+const centerOf = async (locator) => {
+  const box = await locator.boundingBox();
   return [box.x + box.width / 2, box.y + box.height / 2];
 };
 const rowIdAt = ([x, y]) =>
   page.evaluate(([px, py]) => document.elementFromPoint(px, py)?.closest('[data-testid="incident-row"]')?.dataset.id, [x, y]);
 const waitForNewTop = async (previousTop) => {
   await page.waitForFunction((id) => document.querySelector('[data-testid="incident-row"]')?.dataset.id !== id, previousTop, { timeout: 30000, polling: 50 });
+};
+const panelId = () => page.getByTestId('incident-panel').locator('.panel-id').textContent();
+const clickAt = async (point) => {
+  await page.mouse.move(...point, { steps: 20 });
+  await page.mouse.down();
+  await page.mouse.up();
 };
 
 page.on('console', (msg) => {
@@ -59,41 +65,43 @@ page.on('console', (msg) => {
 await page.goto(url);
 note({ event: 'open', loaderVisible: await page.getByTestId('loader').isVisible() });
 await rows.first().waitFor();
-note({ event: 'loaded', rows: await rows.count(), loaderCount: await page.getByTestId('loader').count(), build: await page.getByTestId('build-sha').textContent() });
+note({ event: 'loaded', rows: await rows.count(), loaderCount: await page.getByTestId('loader').count(), rowAckButtons: await page.locator('[data-testid="incident-row"] [data-testid="ack"]').count(), build: await page.getByTestId('build-sha').textContent() });
 
 // watch-board: a new incident arrives at the top without a reload
 await waitForNewTop(await topId());
 note({ event: 'new-top', topId: await topId(), rows: await rows.count() });
 await page.waitForTimeout(1500);
 
-// ack-incident: aim at the top row's Ack, read it, click
-const first = rows.first();
-const firstId = await first.getAttribute('data-id');
-let point = await ackCenter(first);
-await page.mouse.move(...point, { steps: 20 });
-note({ event: 'aim', aimedId: firstId });
+// ack-incident: pick the top row, read its panel, Ack there
+const firstId = await topId();
+await clickAt(await centerOf(rows.first()));
 await page.waitForTimeout(AIM_TO_CLICK_MS);
-note({ event: 'click', aimedId: firstId, underPointer: await rowIdAt(point) });
-await page.mouse.down();
-await page.mouse.up();
+note({ event: 'panel', picked: firstId, panelNames: await panelId() });
+await clickAt(await centerOf(page.getByTestId('panel-ack')));
 await page.waitForTimeout(2500);
 
-// ack-incident again, on the third row, while the list keeps moving: the pointer rests on its Ack while
-// reading the row, a refresh pushes a new incident in at the top, and the click lands on that moment.
+// ack-incident while the list moves: rest on the third row, a new incident pushes in at the top, click.
 const third = rows.nth(2);
 const thirdId = await third.getAttribute('data-id');
-point = await ackCenter(third);
+const point = await centerOf(third);
 await page.mouse.move(...point, { steps: 20 });
 const topBefore = await topId();
-note({ event: 'aim', aimedId: thirdId, rowAbove: await rows.nth(1).getAttribute('data-id') });
+note({ event: 'aim', aimedId: thirdId });
 await waitForNewTop(topBefore);
 note({ event: 'new-top', topId: await topId() });
 await page.waitForTimeout(250);
 note({ event: 'click', aimedId: thirdId, underPointer: await rowIdAt(point) });
 await page.mouse.down();
 await page.mouse.up();
+await page.waitForTimeout(AIM_TO_CLICK_MS);
+note({ event: 'panel', picked: thirdId, panelNames: await panelId() });
+// The panel names another incident: pick the meant row again (it holds still now), then Ack in the panel.
+await clickAt(await centerOf(page.locator(`[data-testid="incident-row"][data-id="${thirdId}"]`)));
+await page.waitForTimeout(AIM_TO_CLICK_MS);
+note({ event: 'panel', picked: thirdId, panelNames: await panelId() });
+await clickAt(await centerOf(page.getByTestId('panel-ack')));
 await page.waitForTimeout(1500);
-note({ event: 'state', aimedRowHasAck: await page.locator(`[data-testid="incident-row"][data-id="${thirdId}"] [data-testid="ack"]`).count() });
+note({ event: 'state', aimedRowAcked: await page.locator(`[data-testid="incident-row"][data-id="${thirdId}"] [data-testid="acked"]`).count() });
 await page.mouse.move(1150, 650, { steps: 20 });
 await page.waitForTimeout(3000);
 const video = page.video();
